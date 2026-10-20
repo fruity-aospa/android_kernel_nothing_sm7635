@@ -9,6 +9,10 @@ fi
 
 pahole_ver=$($(dirname $0)/pahole-version.sh ${PAHOLE})
 
+if [ -z "${pahole_ver}" ] || [ "${pahole_ver}" = "0" ]; then
+	exit 0
+fi
+
 if [ "${pahole_ver}" -ge "118" ] && [ "${pahole_ver}" -le "121" ]; then
 	# pahole 1.18 through 1.21 can't handle zero-sized per-CPU vars
 	extra_paholeopt="${extra_paholeopt} --skip_encoding_btf_vars"
