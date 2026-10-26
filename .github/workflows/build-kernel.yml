@@ -8,8 +8,9 @@ on:
         required: true
         type: choice
         options:
+          - asteroids-ksun-susfs
           - asteroids
-        default: asteroids
+        default: asteroids-ksun-susfs
       root_flavor:
         description: 'Root & Hide Solution'
         required: true
