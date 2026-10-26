@@ -1,0 +1,274 @@
+name: Build Asteroids Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Kernel base branch'
+        required: true
+        type: choice
+        options:
+          - asteroids
+        default: asteroids
+      root_flavor:
+        description: 'Root & Hide Solution'
+        required: true
+        type: choice
+        options:
+          - FinaSU
+          - KernelSU-Next
+          - None
+        default: KernelSU-Next
+      clang_version:
+        description: 'AOSP Clang version'
+        required: true
+        type: string
+        default: 'r530567'
+      branding:
+        description: 'Kernel branding string'
+        required: false
+        type: string
+        default: '-asteroids-susfs'
+
+jobs:
+  build-kernel:
+    name: Build Kernel (${{ inputs.root_flavor }} on ${{ inputs.branch }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Maximize build disk space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 10
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache curl flex \
+            git gnupg gperf libelf-dev libssl-dev lz4 make libncurses-dev \
+            python3 python3-pip rsync tar unzip wget xz-utils zlib1g-dev \
+            dwarves
+
+      - name: Download & Setup AOSP Clang (${{ inputs.clang_version }})
+        run: |
+          CLANG_DIR="${RUNNER_TEMP}/clang"
+          mkdir -p "${CLANG_DIR}"
+          echo "Downloading AOSP Clang ${{ inputs.clang_version }}..."
+          curl -fsSL --retry 3 "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-${{ inputs.clang_version }}.tar.gz" | tar -xz -C "${CLANG_DIR}"
+          echo "${CLANG_DIR}/bin" >> $GITHUB_PATH
+          echo "CLANG_DIR=${CLANG_DIR}" >> $GITHUB_ENV
+
+      - name: Verify Clang Version
+        run: |
+          clang --version
+          ld.lld --version
+
+      - name: Setup SUSFS
+        run: |
+          if [ ! -f "fs/susfs.c" ]; then
+            echo "==> Fetching SUSFS v2.3.0 from asteroids tree..."
+            curl -sSL "https://github.com/fuzailmansuri/android_kernel_nothing_sm7635/commit/ff5dfaca362a194dfb8aa712dd75dc03214bfb76.patch" > /tmp/susfs.patch
+            git apply --exclude='KernelSU-Next/*' --exclude='.gitignore' --reject /tmp/susfs.patch || true
+            rm -f /tmp/susfs.patch
+          fi
+          echo "SUSFS files check:"
+          ls -la fs/susfs.c include/linux/susfs.h || echo "SUSFS check completed"
+
+      - name: Setup Root Implementation (${{ inputs.root_flavor }})
+        run: |
+          mkdir -p release_artifacts
+          if [ "${{ inputs.root_flavor }}" = "FinaSU" ]; then
+            echo "==> Configuring FinaSU (LyraVoid/FinaSU)..."
+            rm -rf drivers/kernelsu KernelSU-Next FinaSU
+            git clone --depth 1 https://github.com/LyraVoid/FinaSU.git FinaSU
+            ln -sf ../FinaSU/kernel drivers/kernelsu
+
+            # Download matching FinaSU Manager APK
+            echo "==> Fetching latest FinaSU Manager APK..."
+            FINASU_APK_URL=$(curl -s "https://api.github.com/repos/LyraVoid/FinaSU/releases/latest" | jq -r '.assets[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+            if [ -n "${FINASU_APK_URL}" ] && [ "${FINASU_APK_URL}" != "null" ]; then
+              wget -q "${FINASU_APK_URL}" -O release_artifacts/FinaSU_Manager.apk || true
+            fi
+          elif [ "${{ inputs.root_flavor }}" = "KernelSU-Next" ]; then
+            echo "==> Configuring KernelSU-Next (pershoot dev-susfs)..."
+            rm -rf drivers/kernelsu KernelSU-Next FinaSU
+            git clone --depth 1 -b dev-susfs https://github.com/pershoot/KernelSU-Next.git KernelSU-Next
+            ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+
+            # Download matching KernelSU-Next Manager APK
+            echo "==> Fetching latest KernelSU-Next Manager APK..."
+            KSUN_APK_URL=$(curl -s "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/releases/latest" | jq -r '.assets[] | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+            if [ -n "${KSUN_APK_URL}" ] && [ "${KSUN_APK_URL}" != "null" ]; then
+              wget -q "${KSUN_APK_URL}" -O release_artifacts/KernelSU_Next_Manager.apk || true
+            fi
+          fi
+
+          # Ensure drivers/Makefile and drivers/Kconfig wire kernelsu
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> drivers/Makefile
+          fi
+          if ! grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          fi
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-kernel-${{ inputs.branch }}-${{ inputs.root_flavor }}-${{ github.sha }}
+          restore-keys: |
+            ccache-kernel-${{ inputs.branch }}-${{ inputs.root_flavor }}-
+            ccache-kernel-
+
+      - name: Configure Kernel
+        run: |
+          export PATH="${CLANG_DIR}/bin:${PATH}"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC="ccache clang"
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          ccache -M 10G
+          ccache -z
+
+          echo "==> Generating base GKI defconfig..."
+          make O=out gki_defconfig
+
+          echo "==> Merging vendor asteroids_perf.config..."
+          if [ -f "arch/arm64/configs/vendor/asteroids_perf.config" ]; then
+            ./scripts/kconfig/merge_config.sh -m -O out out/.config arch/arm64/configs/vendor/asteroids_perf.config
+          fi
+
+          # Enable KSU and SUSFS in out/.config if FinaSU or KernelSU-Next selected
+          if [ "${{ inputs.root_flavor }}" != "None" ]; then
+            cat << 'KSU_CONFIG_EOF' >> out/.config
+          CONFIG_KSU=y
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_SUS_MAP=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          KSU_CONFIG_EOF
+            sed -i 's/^[ \t]*//' out/.config
+          fi
+
+          # Apply branding string if set
+          if [ -n "${{ inputs.branding }}" ]; then
+            sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"${{ inputs.branding }}\"/" out/.config || echo "CONFIG_LOCALVERSION=\"${{ inputs.branding }}\"" >> out/.config
+          fi
+
+          echo "==> Finalizing olddefconfig..."
+          make O=out olddefconfig
+
+          echo "==> Root & SUSFS Config Validation:"
+          grep -E "CONFIG_KSU|CONFIG_SUSFS" out/.config || echo "No KSU config found in .config"
+
+      - name: Compile Kernel Image
+        run: |
+          export PATH="${CLANG_DIR}/bin:${PATH}"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC="ccache clang"
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export KBUILD_BUILD_USER=fruitzail
+          export KBUILD_BUILD_HOST=ServerHive
+
+          make -j$(nproc --all) O=out Image
+
+          if [ ! -f "out/arch/arm64/boot/Image" ]; then
+            echo "Error: out/arch/arm64/boot/Image was not created!"
+            exit 1
+          fi
+
+          echo "Kernel compiled successfully!"
+          ls -lh out/arch/arm64/boot/Image
+          ccache -s
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/README.md
+
+          cat << 'ANYKERNEL_EOF' > AnyKernel3/anykernel.sh
+          ### AnyKernel3 Script for Nothing Phone (2a/3a) asteroids
+          properties() { '
+          kernel.string=Asteroids Kernel (6.6.144) + FinaSU/SUSFS
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=asteroids
+          device.name2=Asteroids
+          device.name3=Pacman
+          device.name4=pacman
+          device.name5=PacmanPro
+          device.name6=pacmanpro
+          supported.versions=14, 15, 16, 17
+          supported.patchlevels=
+          '; }
+
+          BLOCK=boot;
+          IS_SLOT_DEVICE=auto;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          . tools/ak3-core.sh;
+
+          split_boot;
+          flash_boot;
+          ANYKERNEL_EOF
+
+          sed -i 's/^[ \t]*//' AnyKernel3/anykernel.sh
+
+          cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          ZIP_NAME="AnyKernel3-asteroids-6.6.144-${{ inputs.root_flavor }}-${TIMESTAMP}.zip"
+          cd AnyKernel3
+          zip -r9 "../${ZIP_NAME}" * -x "*placeholder"
+          cd ..
+
+          cp "${ZIP_NAME}" release_artifacts/
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+          echo "Package created: ${ZIP_NAME}"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: release_artifacts/*
+          retention-days: 14
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="release-${{ inputs.root_flavor }}-$(date +'%Y%m%d%H%M')"
+          gh release create "${TAG_NAME}" release_artifacts/* \
+            --title "Asteroids Kernel 6.6.144 (${{ inputs.root_flavor }} + SUSFS)" \
+            --notes "Automated build for Nothing Phone (2a/3a) asteroids with ${{ inputs.root_flavor }} and SUSFS v2.3+." || echo "Release creation optional"
