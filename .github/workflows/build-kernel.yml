@@ -8,9 +8,8 @@ on:
         required: true
         type: choice
         options:
-          - asteroids-ksun-susfs
           - asteroids
-        default: asteroids-ksun-susfs
+        default: asteroids
       root_flavor:
         description: 'Root & Hide Solution'
         required: true
@@ -211,7 +210,7 @@ jobs:
 
       - name: Package with AnyKernel3
         run: |
-          git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          git clone --depth 1 -b gki-2.0 https://github.com/WildKernels/AnyKernel3.git AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/README.md
 
           cat << 'ANYKERNEL_EOF' > AnyKernel3/anykernel.sh
