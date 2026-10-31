@@ -2030,6 +2030,8 @@
   sysfs_remove_link_from_group
   sysfs_streq
   sysrq_mask
+  sysstats_register_kgsl_stats_cb
+  sysstats_unregister_kgsl_stats_cb
   system_32bit_el0_cpumask
   system_cpucaps
   system_freezable_power_efficient_wq
