@@ -1388,7 +1388,7 @@ static int ep_create_wakeup_source(struct epitem *epi)
 	struct wakeup_source *ws;
 	char ws_name[64];
 
-	strlcpy(ws_name, "eventpoll", sizeof(ws_name));
+	snprintf(ws_name, sizeof(ws_name), "epoll:pid_%d:%s", current->pid, current->comm);
 	trace_android_vh_ep_create_wakeup_source(ws_name, sizeof(ws_name));
 	if (!epi->ep->ws) {
 		epi->ep->ws = wakeup_source_register(NULL, ws_name);
