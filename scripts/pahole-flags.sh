@@ -7,7 +7,15 @@ if ! [ -x "$(command -v ${PAHOLE})" ]; then
 	exit 0
 fi
 
-pahole_ver=$($(dirname $0)/pahole-version.sh ${PAHOLE})
+pahole_ver=$($(dirname $0)/pahole-version.sh ${PAHOLE} 2>/dev/null)
+
+case "${pahole_ver}" in
+	''|*[!0-9]*) exit 0 ;;
+esac
+
+if [ "${pahole_ver}" -le 0 ]; then
+	exit 0
+fi
 
 if [ "${pahole_ver}" -ge "118" ] && [ "${pahole_ver}" -le "121" ]; then
 	# pahole 1.18 through 1.21 can't handle zero-sized per-CPU vars

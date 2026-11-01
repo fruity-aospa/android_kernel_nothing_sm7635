@@ -446,7 +446,7 @@ SYSCALL_DEFINE2(timerfd_create, int, clockid, int, flags)
 
 	ctx->moffs = ktime_mono_to_real(0);
 
-	strlcpy(file_name_buf, "[timerfd]", sizeof(file_name_buf));
+	snprintf(file_name_buf, sizeof(file_name_buf), "[timerfd:pid_%d:%s]", current->pid, current->comm);
 	trace_android_vh_timerfd_create(file_name_buf, sizeof(file_name_buf));
 	ufd = anon_inode_getfd(file_name_buf, &timerfd_fops, ctx,
 			       O_RDWR | (flags & TFD_SHARED_FCNTL_FLAGS));

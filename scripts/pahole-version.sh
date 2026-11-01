@@ -7,7 +7,11 @@
 
 if [ ! -x "$(command -v "$@")" ]; then
 	echo 0
-	exit 1
+	exit 0
 fi
 
-"$@" --version | sed -E 's/v([0-9]+)\.([0-9]+)/\1\2/'
+ver=$("$@" --version 2>/dev/null | sed -En 's/.*v([0-9]+)\.([0-9]+).*/\1\2/p')
+case "$ver" in
+	''|*[!0-9]*) echo 0 ;;
+	*) echo "$ver" ;;
+esac
