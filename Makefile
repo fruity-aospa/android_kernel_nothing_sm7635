@@ -1133,6 +1133,19 @@ include-$(CONFIG_KCOV)		+= scripts/Makefile.kcov
 include-$(CONFIG_RANDSTRUCT)	+= scripts/Makefile.randstruct
 include-$(CONFIG_GCC_PLUGINS)	+= scripts/Makefile.gcc-plugins
 
+ifdef CONFIG_CC_IS_CLANG
+# Clang before clang-16 would warn on default argument promotions.
+ifneq ($(call clang-min-version, 210001),y)
+# Disable -Wformat
+KBUILD_CFLAGS += -Wno-format
+# Then re-enable flags that were part of the -Wformat group that aren't
+# problematic.
+KBUILD_CFLAGS += -Wformat-extra-args -Wformat-invalid-specifier
+KBUILD_CFLAGS += -Wformat-zero-length -Wnonnull
+KBUILD_CFLAGS += -Wformat-insufficient-args
+endif
+endif
+
 include $(addprefix $(srctree)/, $(include-y))
 
 # scripts/Makefile.gcc-plugins is intentionally included last.
@@ -1224,7 +1237,7 @@ export MODULES_NSDEPS := $(extmod_prefix)modules.nsdeps
 
 PHONY += headers
 
-ext-mod-dir := ../sm8650-modules
+ext-mod-dir := ../sm7635-modules
 ext-mod-dirs := \
  	$(ext-mod-dir)/qcom/opensource/audio-kernel \
  	$(ext-mod-dir)/qcom/opensource/dataipa/drivers/platform/msm \
