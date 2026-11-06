@@ -465,14 +465,14 @@ static int sched_task_handler(struct ctl_table *table, int write,
 		goto unlock_mutex;
 
 	if (pid_and_val[0] <= 0) {
-		ret = -ENOENT;
+		ret = 0;
 		goto unlock_mutex;
 	}
 
 	/* parsed the values successfully in pid_and_val[] array */
 	task = get_pid_task(find_vpid(pid_and_val[0]), PIDTYPE_PID);
 	if (!task) {
-		ret = -ENOENT;
+		ret = 0;
 		goto unlock_mutex;
 	}
 	wts = (struct walt_task_struct *) task->android_vendor_data1;
