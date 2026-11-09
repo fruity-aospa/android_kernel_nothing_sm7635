@@ -1639,7 +1639,6 @@ static void ppp_setup(struct net_device *dev)
 	dev->type = ARPHRD_PPP;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 	dev->priv_destructor = ppp_dev_priv_destructor;
-	dev->pcpu_stat_type = NETDEV_PCPU_STAT_TSTATS;
 	dev->features = NETIF_F_SG | NETIF_F_FRAGLIST;
 	dev->hw_features = dev->features;
 	netif_keep_dst(dev);
