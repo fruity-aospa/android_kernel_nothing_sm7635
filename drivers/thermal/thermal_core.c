@@ -1468,7 +1468,7 @@ static int thermal_pm_notify(struct notifier_block *nb,
 	case PM_POST_SUSPEND:
 		atomic_set(&in_suspend, 0);
 		list_for_each_entry(tz, &thermal_tz_list, node) {
-
+			irq_wakeable = 0;
 			trace_android_vh_thermal_pm_notify_suspend(tz, &irq_wakeable);
 			if (irq_wakeable)
 				continue;
