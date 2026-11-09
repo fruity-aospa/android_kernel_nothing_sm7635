@@ -5,6 +5,7 @@
 #include <linux/module.h>
 #include <linux/reboot.h>
 #include <linux/panic_notifier.h>
+#include <linux/string.h>
 
 #define MAX_SZ_DIAG_ERR_MSG 	100
 
@@ -18,7 +19,7 @@ struct nothing_restart_info {
 	char msg[MAX_SZ_DIAG_ERR_MSG];
 };
 
-static struct nothing_restart_info *restart_info;
+static struct nothing_restart_info __iomem *restart_info;
 static unsigned rst_msg_size;
 
 static inline void set_restart_msg(const char *msg)
@@ -51,10 +52,14 @@ static int nothing_notifier_panic(struct notifier_block *this, unsigned long eve
 static int nothing_notifier_reboot(struct notifier_block *this, unsigned long event,
 			      void *ptr)
 {
-	char reboot_msg[MAX_SZ_DIAG_ERR_MSG];
+	char reboot_msg[MAX_SZ_DIAG_ERR_MSG] = "Reboot";
 	pr_warn("%s: Get reboot notify", __func__);
 	if (ptr)
 		snprintf(reboot_msg, rst_msg_size - 1, "Reboot: %s", (char *)ptr);
+	else if (event == SYS_POWER_OFF)
+		strscpy(reboot_msg, "Poweroff", sizeof(reboot_msg));
+	else if (event == SYS_HALT)
+		strscpy(reboot_msg, "Halt", sizeof(reboot_msg));
 	set_restart_msg(reboot_msg);
 
 	return NOTIFY_OK;
@@ -64,9 +69,13 @@ static int nothing_notifier_restart(struct notifier_block *this, unsigned long e
 			      void *ptr)
 {
 	char reboot_msg[MAX_SZ_DIAG_ERR_MSG];
+
+	/* Preserve the panic or reboot message when no new command is supplied. */
+	if (!ptr)
+		return NOTIFY_DONE;
+
 	pr_warn("%s: Get restart notify", __func__);
-	if (ptr)
-		snprintf(reboot_msg, rst_msg_size - 1, "Reboot: %s", (char *)ptr);
+	snprintf(reboot_msg, sizeof(reboot_msg), "Reboot: %s", (char *)ptr);
 	set_restart_msg(reboot_msg);
 
 	return NOTIFY_OK;
@@ -121,8 +130,8 @@ static int nothing_restart_info_probe(struct platform_device *pdev)
 	nt_poweroff_notify->reboot_nb.priority = 255;
 	register_reboot_notifier(&nt_poweroff_notify->reboot_nb);
 
-	nt_poweroff_notify->reboot_nb.notifier_call = nothing_notifier_restart;
-	nt_poweroff_notify->reboot_nb.priority = 201;
+	nt_poweroff_notify->restart_nb.notifier_call = nothing_notifier_restart;
+	nt_poweroff_notify->restart_nb.priority = 201;
 	register_restart_handler(&nt_poweroff_notify->restart_nb);
 
 	platform_set_drvdata(pdev, nt_poweroff_notify);
