@@ -2142,12 +2142,12 @@ static int scmi_chan_setup(struct scmi_info *info, struct device_node *of_node,
 
 	cinfo->rx_timeout_ms = info->desc->max_rx_timeout_ms;
 
-	ret = of_property_read_u32(dev->of_node, "arm,max-rx-timeout-ms",
+	ret = of_property_read_u32(of_node, "arm,max-rx-timeout-ms",
 				   &cinfo->rx_timeout_ms);
 	if (ret && ret != -EINVAL)
-		dev_err(dev, "Malformed arm,max-rx-timeout-ms DT property.\n");
+		dev_err(info->dev, "Malformed arm,max-rx-timeout-ms DT property.\n");
 
-	dev_info(dev, "SCMI max-rx-timeout: %dms\n",
+	dev_info(info->dev, "SCMI max-rx-timeout: %dms\n",
 		 cinfo->rx_timeout_ms);
 
 	/* Create a unique name for this transport device */

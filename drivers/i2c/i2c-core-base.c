@@ -1499,8 +1499,6 @@ static int i2c_register_adapter(struct i2c_adapter *adap)
 	adap->dev.type = &i2c_adapter_type;
 	device_initialize(&adap->dev);
 
-	adap->debugfs = debugfs_create_dir(dev_name(&adap->dev), i2c_debugfs_root);
-
 	mutex_lock(&core_lock);
 	idr_replace(&i2c_adapter_idr, adap, adap->nr);
 	mutex_unlock(&core_lock);
@@ -1556,7 +1554,6 @@ err_replace_id:
 	mutex_lock(&core_lock);
 	idr_replace(&i2c_adapter_idr, NULL, adap->nr);
 	mutex_unlock(&core_lock);
-	debugfs_remove_recursive(adap->debugfs);
 	init_completion(&adap->dev_released);
 	put_device(&adap->dev);
 	wait_for_completion(&adap->dev_released);
