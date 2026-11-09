@@ -250,9 +250,6 @@ static int virtual_temp_probe(struct platform_device *pdev)
 	virtual_ntc[hst->id] = hst;
 
 	platform_set_drvdata(pdev, hst);
-
-    register_trace_android_vh_thermal_pm_notify_suspend(tz_is_irq, NULL);
-
 	return 0;
 err_free_trip:
 	kfree(hst->trips);
@@ -414,23 +411,44 @@ static int __init init_virtual_temp(void)
     if (IS_ERR(dev)) {
         ret = PTR_ERR(dev);
         printk(KERN_ALERT "Failed to create device\n");
-        return ret;
+		goto err_destroy_class;
     }
 
     ret = device_create_file(dev, &dev_attr_data);
     if (ret < 0) {
         printk(KERN_ALERT "Failed to create attribute file.\n");
-        return ret;
+		goto err_destroy_device;
     }
 
 	spin_lock_init(&sync_temp_lock);
 
-	return platform_driver_register(&virtual_temp_platdrv);
+	ret = register_trace_android_vh_thermal_pm_notify_suspend(tz_is_irq, NULL);
+	if (ret)
+		goto err_remove_file;
+
+	ret = platform_driver_register(&virtual_temp_platdrv);
+	if (ret)
+		goto err_unregister_hook;
+
+	return 0;
+
+err_unregister_hook:
+	unregister_trace_android_vh_thermal_pm_notify_suspend(tz_is_irq, NULL);
+	tracepoint_synchronize_unregister();
+err_remove_file:
+	device_remove_file(dev, &dev_attr_data);
+err_destroy_device:
+	device_destroy(virtual_temp_class, MKDEV(100, 0));
+err_destroy_class:
+	class_destroy(virtual_temp_class);
+	return ret;
 }
 
 static void __exit cleanup_virtual_temp(void)
 {
     printk("Cleanup virtual_temp\n");
+	unregister_trace_android_vh_thermal_pm_notify_suspend(tz_is_irq, NULL);
+	tracepoint_synchronize_unregister();
 	platform_driver_unregister(&virtual_temp_platdrv);
     device_remove_file(dev, &dev_attr_data);
     device_destroy(virtual_temp_class, MKDEV(100, 0));
