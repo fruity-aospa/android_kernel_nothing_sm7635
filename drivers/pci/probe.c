@@ -2361,9 +2361,17 @@ struct pci_dev *pci_alloc_dev(struct pci_bus *bus)
 {
 	struct pci_dev *dev;
 
-	dev = kzalloc(sizeof(struct pci_dev), GFP_KERNEL);
+	/* Keep the exclusive resource outside the GKI pci_dev layout. */
+	dev = kzalloc(sizeof(*dev) + sizeof(struct resource), GFP_KERNEL);
 	if (!dev)
 		return NULL;
+
+	dev->driver_exclusive_resource = (struct resource *)(dev + 1);
+	*dev->driver_exclusive_resource = (struct resource) {
+		.name = "PCI Exclusive",
+		.start = 0,
+		.end = -1,
+	};
 
 	INIT_LIST_HEAD(&dev->bus_list);
 	dev->dev.type = &pci_dev_type;

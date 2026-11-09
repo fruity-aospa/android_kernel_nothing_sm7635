@@ -23,6 +23,7 @@
 #include <linux/fs.h>
 #include <linux/capability.h>
 #include <linux/security.h>
+#include <linux/panic.h>
 #include <linux/slab.h>
 #include <linux/vgaarb.h>
 #include <linux/pm_runtime.h>
@@ -801,6 +802,12 @@ static ssize_t pci_write_config(struct file *filp, struct kobject *kobj,
 	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
 	if (ret)
 		return ret;
+
+	if (resource_is_exclusive(dev->driver_exclusive_resource, off, count)) {
+		pci_warn_once(dev, "%s: Unexpected write to kernel-exclusive config offset %llx",
+			      current->comm, off);
+		add_taint(TAINT_USER, LOCKDEP_STILL_OK);
+	}
 
 	if (off >= dev->cfg_size)
 		return 0;
