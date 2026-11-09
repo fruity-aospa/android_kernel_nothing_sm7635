@@ -199,15 +199,9 @@ static inline int timer_delete(struct timer_list *timer)
 	return del_timer(timer);
 }
 
-static inline int timer_shutdown_sync(struct timer_list *timer)
-{
-	return del_timer_sync(timer);
-}
+extern int timer_shutdown_sync(struct timer_list *timer);
 
-static inline int timer_shutdown(struct timer_list *timer)
-{
-	return del_timer(timer);
-}
+extern int timer_shutdown(struct timer_list *timer);
 
 extern void init_timers(void);
 struct hrtimer;
