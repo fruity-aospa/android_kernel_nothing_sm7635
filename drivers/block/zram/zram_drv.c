@@ -701,7 +701,7 @@ static bool is_eligible_swp_to_disk_entry(swp_entry_t swp_entry)
 }
 
 static ssize_t writeback_store_apply(struct zram *zram, unsigned long index,
-					unsigned long nr_pages, int mode)
+					int mode)
 {
 	struct bio bio;
 	struct bio_vec bio_vec;
@@ -709,6 +709,7 @@ static ssize_t writeback_store_apply(struct zram *zram, unsigned long index,
 	ssize_t ret = 0;
 	int err;
 	unsigned long blk_idx = 0;
+	unsigned long nr_pages;
 
 	down_read(&zram->init_lock);
 	if (!init_done(zram)) {
@@ -719,6 +720,15 @@ static ssize_t writeback_store_apply(struct zram *zram, unsigned long index,
 	if (!zram->backing_dev) {
 		ret = -ENODEV;
 		goto release_init_lock;
+	}
+
+	nr_pages = zram->disksize >> PAGE_SHIFT;
+	if (mode == PAGE_WRITEBACK) {
+		if (index >= nr_pages) {
+			ret = -EINVAL;
+			goto release_init_lock;
+		}
+		nr_pages = 1;
 	}
 
 	page = alloc_page(GFP_KERNEL);
@@ -875,7 +885,7 @@ static void walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	pte_unmap_unlock(pte, ptl);
 
 	for (i = 0; i < index; ++i)
-		writeback_store_apply(walk->zram, swp_offset(entries[i]), 1, PAGE_WRITEBACK);
+		writeback_store_apply(walk->zram, swp_offset(entries[i]), PAGE_WRITEBACK);
 }
 
 static void walk_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
@@ -1043,7 +1053,6 @@ static ssize_t writeback_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
 	struct zram *zram = dev_to_zram(dev);
-	unsigned long nr_pages = zram->disksize >> PAGE_SHIFT;
 	unsigned long index = 0;
 	ssize_t ret = len;
 	pid_t pid;
@@ -1058,11 +1067,9 @@ static ssize_t writeback_store(struct device *dev,
 		mode = IDLE_WRITEBACK | HUGE_WRITEBACK;
 	else {
 		if (!strncmp(buf, PAGE_WB_SIG, sizeof(PAGE_WB_SIG) - 1)) {
-			if (kstrtol(buf + sizeof(PAGE_WB_SIG) - 1, 10, &index) ||
-					index >= nr_pages)
+			if (kstrtol(buf + sizeof(PAGE_WB_SIG) - 1, 10, &index))
 				return -EINVAL;
 
-			nr_pages = 1;
 			mode = PAGE_WRITEBACK;
 		} else if (!parse_wb_store(buf, len, &pid, &limit)) {
 			mode = PID_WRITEBACK;
@@ -1073,7 +1080,7 @@ static ssize_t writeback_store(struct device *dev,
 	if (mode == PID_WRITEBACK)
 		ret = writeback_pid_store(zram, pid, limit);
 	else
-		ret = writeback_store_apply(zram, index, nr_pages, mode);
+		ret = writeback_store_apply(zram, index, mode);
 
 	return ret ? : len;
 }
@@ -1174,8 +1181,7 @@ static ssize_t read_block_state(struct file *file, char __user *buf,
 	char *kbuf;
 	ssize_t index, written = 0;
 	struct zram *zram = file->private_data;
-	unsigned long nr_pages = zram->disksize >> PAGE_SHIFT;
-	struct timespec64 ts;
+	unsigned long nr_pages;
 
 	kbuf = kvmalloc(count, GFP_KERNEL);
 	if (!kbuf)
@@ -1188,8 +1194,11 @@ static ssize_t read_block_state(struct file *file, char __user *buf,
 		return -EINVAL;
 	}
 
+	nr_pages = zram->disksize >> PAGE_SHIFT;
+
 	for (index = *ppos; index < nr_pages; index++) {
 		int copied;
+		struct timespec64 ts;
 
 		zram_slot_lock(zram, index);
 		if (!zram_allocated(zram, index))

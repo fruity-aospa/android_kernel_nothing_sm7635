@@ -161,6 +161,7 @@ obj-$(CONFIG_SXR_GCC_NEO) += gcc-neo.o
 obj-$(CONFIG_SXR_GCC_NIOBE) += gcc-niobe.o
 obj-$(CONFIG_SXR_GCC_SERAPH) += gcc-seraph.o
 obj-$(CONFIG_SM_GPUCC_6150) += gpucc-sm6150.o
+obj-$(CONFIG_SM_GCC_8550) += gcc-sm8550.o
 obj-$(CONFIG_SM_GPUCC_6350) += gpucc-sm6350.o
 obj-$(CONFIG_SM_GPUCC_PITTI) += gpucc-pitti.o
 obj-$(CONFIG_SM_CAMCC_CLIFFS) += camcc-cliffs.o
