@@ -1174,7 +1174,7 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
 	htab_unlock_bucket(htab, b, hash, flags);
 	if (l_old) {
 		if (old_map_ptr)
-			map->ops->map_fd_put_ptr(map, old_map_ptr, true);
+			map->ops->map_fd_put_ptr(old_map_ptr);
 		if (!htab_is_prealloc(htab))
 			free_htab_elem(htab, l_old);
 	}
